@@ -1,0 +1,75 @@
+# ========================
+# Dependencies
+# ========================
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ========================
+# Environment Variables
+# ========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# ========================
+# Build Outputs
+# ========================
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# TypeScript
+*.tsbuildinfo
+frontend/next-env.d.ts
+
+# Backend compiled output
+backend/dist/
+
+# ========================
+# IDE & Editor
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ========================
+# Debug Logs
+# ========================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+debug.log
+
+# ========================
+# Testing
+# ========================
+coverage/
+.nyc_output/
+
+# ========================
+# Misc
+# ========================
+*.pem
+.vercel
+.turbo
+
+# Lint output (generated)
+frontend/lint-output.txt
+
+# Docker (local volumes)
+postgres-data/

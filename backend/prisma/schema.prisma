@@ -1,0 +1,354 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+  HOD
+  EVENT_COORDINATOR
+  PLACEMENT_OFFICER
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum VerificationMethod {
+  MANUAL
+  QR
+  GEOLOCATION
+  LEAVE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LectureStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id                     String             @id @default(uuid())
+  email                  String             @unique
+  passwordHash           String
+  firstName              String
+  lastName               String
+  role                   Role
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  // Institutional & Auth Mgmt Fields
+  institutionalId        String?            @unique
+  isEmailVerified        Boolean            @default(false)
+  emailVerificationToken String?            @unique
+  passwordResetToken     String?            @unique
+  passwordResetExpires   DateTime?
+  lastLoginAt            DateTime?
+  accountStatus          AccountStatus      @default(ACTIVE)
+  departmentId           String?
+  department             Department?        @relation("UserDepartment", fields: [departmentId], references: [id])
+  semester               Int?
+  avatarUrl              String?
+
+  // Gamification & Engagement Fields
+  xp                     Int                @default(0)
+  level                  Int                @default(1)
+  streak                 Int                @default(0)
+  longestStreak          Int                @default(0)
+
+  // Relationships
+  sections               Section[]          @relation("TeacherSections")
+  enrollments            Enrollment[]       @relation("StudentEnrollments")
+  attendanceLogs         AttendanceRecord[] @relation("StudentAttendance")
+  markedAttendance       AttendanceRecord[] @relation("AttendanceMarker")
+  submittedLeaves        LeaveRequest[]     @relation("StudentLeaves")
+  reviewedLeaves         LeaveRequest[]     @relation("LeaveReviewer")
+  sessions               Session[]
+  activities             ActivityLog[]
+  aiInsights             AiInsight[]
+  timetablePreference    TimetablePreference?
+  badgesEarned           UserBadge[]
+  achievementsProgress   UserAchievement[]
+  redemptions            RewardRedemption[]
+
+  @@map("users")
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  // Relationships
+  courses   Course[]
+  users     User[]   @relation("UserDepartment")
+
+  @@map("departments")
+}
+
+model Course {
+  id           String     @id @default(uuid())
+  code         String     @unique
+  name         String
+  credits      Int
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  // Relationships
+  sections     Section[]
+
+  @@map("courses")
+}
+
+model Section {
+  id           String       @id @default(uuid())
+  name         String
+  courseId     String
+  course       Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructorId String
+  instructor   User         @relation("TeacherSections", fields: [instructorId], references: [id], onDelete: Cascade)
+  semester     String
+  year         Int
+  createdAt    DateTime     @default(now())
+
+  // Relationships
+  enrollments  Enrollment[]
+  schedules    Schedule[]
+  lectures     Lecture[]
+
+  @@map("sections")
+}
+
+model Enrollment {
+  id         String   @id @default(uuid())
+  studentId  String
+  student    User     @relation("StudentEnrollments", fields: [studentId], references: [id], onDelete: Cascade)
+  sectionId  String
+  section    Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  enrolledAt DateTime @default(now())
+
+  @@unique([studentId, sectionId])
+  @@map("enrollments")
+}
+
+model Schedule {
+  id        String   @id @default(uuid())
+  sectionId String
+  section   Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  dayOfWeek String   // e.g., "MONDAY", "TUESDAY"
+  startTime String   // e.g., "09:00"
+  endTime   String   // e.g., "10:30"
+  room      String
+  createdAt DateTime @default(now())
+
+  @@map("schedules")
+}
+
+model Lecture {
+  id        String        @id @default(uuid())
+  sectionId String
+  section   Section       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  dateTime  DateTime
+  topic     String?
+  status    LectureStatus @default(SCHEDULED)
+  createdAt DateTime      @default(now())
+
+  // Relationships
+  attendanceRecords AttendanceRecord[]
+
+  @@map("lectures")
+}
+
+model AttendanceRecord {
+  id                 String             @id @default(uuid())
+  studentId          String
+  student            User               @relation("StudentAttendance", fields: [studentId], references: [id], onDelete: Cascade)
+  lectureId          String
+  lecture            Lecture            @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  status             AttendanceStatus
+  markedAt           DateTime           @default(now())
+  markedById         String
+  markedBy           User               @relation("AttendanceMarker", fields: [markedById], references: [id])
+  verificationMethod VerificationMethod @default(MANUAL)
+
+  @@unique([studentId, lectureId])
+  @@map("attendance_records")
+}
+
+model LeaveRequest {
+  id           String      @id @default(uuid())
+  studentId    String
+  student      User        @relation("StudentLeaves", fields: [studentId], references: [id], onDelete: Cascade)
+  startDate    DateTime
+  endDate      DateTime
+  reason       String
+  type         String?
+  reviewNote   String?
+  documentUrl  String?
+  status       LeaveStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?       @relation("LeaveReviewer", fields: [reviewedById], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@map("leave_requests")
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  device     String?
+  ipAddress  String?
+  isRevoked  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("sessions")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action     String
+  details    String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@map("activity_logs")
+}
+
+model AiInsight {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // PREDICTION, RECOMMENDATION, RISK_SCORE, REMINDER
+  category  String   // ATTENDANCE, ACADEMIC, EVENT, TIMETABLE
+  content   String   // JSON stringified insight data
+  score     Float?   // Relevance or risk score
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  @@map("ai_insights")
+}
+
+model TimetablePreference {
+  id              String @id @default(uuid())
+  userId          String @unique
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferMorning   Boolean @default(true)
+  preferredGap    Int     @default(30) // minutes between classes
+  studyBlockMins  Int     @default(60)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("timetable_preferences")
+}
+
+model Badge {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  description String
+  icon        String      // e.g. "Flame", "Zap", "Award", "Target"
+  xpReward    Int         @default(50)
+  category    String      // e.g. "ATTENDANCE", "EVENT", "ENGAGEMENT"
+  createdAt   DateTime    @default(now())
+  usersEarned UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeId   String
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  earnedAt  DateTime @default(now())
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+model Achievement {
+  id          String            @id @default(uuid())
+  name        String            @unique
+  description String
+  targetType  String            // e.g. "STREAK", "CLASSES_ATTENDED", "EVENTS_ATTENDED"
+  targetValue Int
+  pointsReward Int              @default(100)
+  createdAt   DateTime          @default(now())
+  userProgress UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  progress      Int         @default(0)
+  isUnlocked    Boolean     @default(false)
+  unlockedAt    DateTime?
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model RewardStoreItem {
+  id          String             @id @default(uuid())
+  title       String             @unique
+  description String
+  costPoints  Int
+  category    String             // e.g. "ACADEMIC", "LIFESTYLE"
+  quantity    Int                @default(100)
+  createdAt   DateTime           @default(now())
+  redemptions RewardRedemption[]
+
+  @@map("reward_store_items")
+}
+
+model RewardRedemption {
+  id         String          @id @default(uuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       RewardStoreItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  voucherCode String          @unique
+  status     String          @default("PENDING") // e.g. "PENDING", "COMPLETED"
+  redeemedAt DateTime        @default(now())
+
+  @@map("reward_redemptions")
+}
+
